@@ -116,9 +116,9 @@ course_material = '{Not selected}'
 
 if st.sidebar.button('Get available course pdfs'):
     if course_pdfs:
-        course_material = st.sidebar.selectbox("Select course pdf", (pdf for pdf in pdfs))
+        course_material = st.sidebar.selectbox("Select course pdf", (pdf[8:] for pdf in pdfs))
 
-uploaded_file = st.sidebar.file_uploader("Upload your", type="pdf")
+uploaded_file = st.sidebar.file_uploader("Upload your own pdf", type="pdf")
 
 st.write(f"AI Chatbot for **{course}**: {course_material}")
 
@@ -126,10 +126,11 @@ doc_retriever = None
 
 # Start retriever
 try:
-    if course_material != '{Not selected}':
+    if st.sidebar.button('Load pdf'):
         with st.spinner('Loading material...'):
             doc_retriever = load_pdf(course_material)
             conversational_chain = ConversationalRetrievalChain.from_llm(chat_model, doc_retriever)
+                
 except Exception as e:
     st.error(e)
 
@@ -146,33 +147,44 @@ if "past" not in st.session_state:
 
 # Chat UI
 chat_container = st.container()
+response_container = st.container()
 
-with chat_container:
-    with st.form(key="my_form", clear_on_submit=True):
-        user_input = st.text_input(
-            "Query:", placeholder="Converse with material", key="input"
-        )
-        submit_button = st.form_submit_button(label="Send")
-
-# Submit and generate
-if submit_button and user_input:
-    response = conversational_chain(user_input)
-
-    st.session_state["past"].append(user_input)
-    st.session_state["generated"].append(response)
-
-if st.session_state["generated"]:
+def chat_ui_function():
     with chat_container:
-        for k in range(len(st.session_state["generated"])):
-            stchat.message(
-                st.session_state["past"][k],
-                is_user=True,
-                key=str(k) + "_user",
-                avatar_style="book",
+        with st.form(key="my_form", clear_on_submit=True):
+            user_input = st.text_input(
+                "Query:", placeholder="Converse with material", key="input"
             )
+            submit_button = st.form_submit_button(label="Send")
 
-            stchat.message(st.session_state["generated"][k], key=str(k), avatar_style="thumbs")
+    # Submit and generate
+        if submit_button and user_input:
+            response = conversational_chain(user_input)
+            st.session_state["past"].append(user_input)
+            st.session_state["generated"].append(response)
 
+
+    if st.session_state["generated"]:
+        with response_container:
+            for k in range(len(st.session_state["generated"])):
+                stchat.message(
+                    st.session_state["past"][k],
+                    is_user=True,
+                    key=str(k) + "_user",
+                    avatar_style="big-smile")
+
+                stchat.message(st.session_state["generated"][k], key=str(k), avatar_style="thumbs")
+
+
+# Begin chat
+try:
+    if st.button('Initialize chatbot'):
+        chat_ui_function()
+        
+except Exception as e:
+    st.error(e)
+    
+    
 
 st.write("")
 st.write("")
