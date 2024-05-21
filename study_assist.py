@@ -25,7 +25,11 @@ asyncio.set_event_loop(asyncio.new_event_loop())
 # Initialize app resources
 st.set_page_config(page_title="StudyAssist", page_icon=":book:")
 st.title("Study Assist")
+st.write('An AI/RAG application to aid students in their studies, specially optimized for the pharm 028 students')
 
+embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001",
+    )
 
 @st.cache_resource
 def initialize_reources():
@@ -34,13 +38,13 @@ def initialize_reources():
     )
 
     underlying_embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
+        model="models/embedding-001",  # model="models/text-embedding-004"
     )
 
     store = LocalFileStore("./cache/")
 
     cached_embedder = CacheBackedEmbeddings.from_bytes_store(
-        underlying_embeddings, store, namespace=underlying_embeddings.model
+        embeddings, store, namespace=embeddings.model
     )
 
     return llm_gemini, cached_embedder
@@ -48,29 +52,52 @@ def initialize_reources():
 chat_model = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", google_api_key=os.getenv("GOOGLE_API_KEY"))
 
 store = LocalFileStore("./cache/")
-underlying_embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+underlying_embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
 
 cached_embedder = CacheBackedEmbeddings.from_bytes_store(underlying_embeddings, store, namespace=underlying_embeddings.model)
 store = LocalFileStore("./cache/")
 
-cached_embedder = CacheBackedEmbeddings.from_bytes_store(underlying_embeddings, store, namespace=underlying_embeddings.model)
+# cached_embedder = CacheBackedEmbeddings.from_bytes_store(underlying_embeddings, store, namespace=embeddings.model)
 
-chat_model, embedder = initialize_reources()
+# chat_model, embedder = initialize_reources()
 
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=100, chunk_overlap=20, length_function=len, is_separator_regex=False
+    chunk_size=1000, chunk_overlap=20, length_function=len, is_separator_regex=False, separators='\n'
 )
 
 
 def load_pdf(pdf_file):
-    pdf_loader = PyPDFLoader(pdf_file, extract_images=True)
-    pages = pdf_loader.load_and_split()
+    pdf_loader = PyPDFLoader(pdf_file, extract_images=False)
+    pages = pdf_loader.load()
     documents = text_splitter.split_documents(pages)
 
-    faiss_index_db = FAISS.from_documents(documents, cached_embedder)
+    faiss_index_db = FAISS.from_documents(documents, embeddings)
     retriever = faiss_index_db.as_retriever()
-    
+
     return retriever
+
+seed_doc = []
+
+# def load_pdf(material):
+#     # Load PDF
+#     pdf_loader = PyPDFLoader(material, extract_images=False)
+#     pages = pdf_loader.load_and_split()
+#     documents = text_splitter.split_documents(pages)
+
+#     # create vector db
+#     faiss_index_db =  FAISS.from_documents([], cached_embedder)# Initialize empty FAISS index
+#     num_docs = len(course_material)
+#     batch_size = 100  # Limit batch size to 100 documents
+#     for i in range(0, num_docs, batch_size):
+#         batch_docs = course_material[i : i + batch_size]
+#         # embeddings = cached_embedder.embed_documents(batch_docs)
+
+#         faiss_index_db._embed_documents((FAISS.from_documents(batch_docs, embeddings)))
+#         # Add the embeddings to FAISS index here (logic depends on your library)
+#     # After processing all batches, return the faiss_index_db
+#     retriever = faiss_index_db.as_retriever()
+
+#     return retriever
 
 
 def query_response(query, retriever):
@@ -96,7 +123,6 @@ def query_response(query, retriever):
 
 
 # Streamlit UI
-
 # Course list and pdf retrieval
 
 courses = ["PMB", "PCL"]  #  "GSP", "CPM", "PCG",  "PCH",
@@ -114,25 +140,35 @@ except Exception as e:
 
 course_material = '{Not selected}'
 
-if st.sidebar.button('Get available course pdfs'):
-    if course_pdfs:
-        course_material = st.sidebar.selectbox("Select course pdf", (pdf[8:] for pdf in pdfs))
-
-uploaded_file = st.sidebar.file_uploader("Upload your own pdf", type="pdf")
-
-st.write(f"AI Chatbot for **{course}**: {course_material}")
-
-doc_retriever = None
-
-# Start retriever
 try:
-    if st.sidebar.button('Load pdf'):
-        with st.spinner('Loading material...'):
-            doc_retriever = load_pdf(course_material)
-            conversational_chain = ConversationalRetrievalChain.from_llm(chat_model, doc_retriever)
-                
+    # if st.sidebar.button('Get available course pdfs'):
+    if course_pdfs:
+        course_material = st.sidebar.selectbox("Select course pdf", (pdf for pdf in pdfs))
+
+    uploaded_file = st.sidebar.file_uploader("or Upload your own pdf", type="pdf")
+
+    if course_material:
+        st.write(f"AI Chatbot for **{course}**: {course_material[9:]}")
+    else:
+        if uploaded_file is not None:
+            course_material = uploaded_file
+            st.write(f"AI Chatbot for **{course}**: {uploaded_file.filename}")
+    
+    st.success('File loading successful, vector db initialized')
+    doc_retriever = None
+
 except Exception as e:
     st.error(e)
+
+# Start retriever
+# try:
+if st.sidebar.button('Load pdf'):
+    with st.spinner('Loading material...'):
+        doc_retriever = load_pdf(course_material)
+        conversational_chain = ConversationalRetrievalChain.from_llm(chat_model, doc_retriever)
+
+# except Exception as e:
+#     st.error(e)
 
 # Initialize session state
 
@@ -183,8 +219,7 @@ try:
         
 except Exception as e:
     st.error(e)
-    
-    
+
 
 st.write("")
 st.write("")
