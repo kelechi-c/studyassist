@@ -1,3 +1,6 @@
 streamlit 
 langchain
 google-generativeai
+faiss
+PyPDF2
+langchain_community
