@@ -1,31 +1,23 @@
 import os
-from posix import write
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import faiss
-from langchain_core.prompts import ChatPromptTemplate
 from langchain.memory import ConversationBufferMemory
-from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from tempfile import NamedTemporaryFile
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
-from pandas.io.formats.style import doc
 import streamlit as st
-
-# import asyncio
 import nest_asyncio
 
 nest_asyncio.apply()
-# asyncio.set_event_loop()
-
 load_dotenv()
 
 # Initialize app resources
 st.set_page_config(page_title="StudyAssist", page_icon=":book:")
-st.title("Study Assist")
+st.title("StudyAssist(pharmassist-v0)")
 st.write(
-    "An AI/RAG application to aid students in their studies, specially optimized for the pharm 028 students"
+    "An AI/RAG application to aid students in their studies, specially optimized for the pharm 028 students. In simpler terms, chat with your pdf"
 )
 
 
@@ -38,16 +30,13 @@ def initialize_resources():
 
 
 def get_retriever(pdf_file):
-    # path = os.path.join(os.getcwd(), pdf_file.name)
-
     with NamedTemporaryFile(suffix="pdf") as temp:
         temp.write(pdf_file.getvalue())
-        pdf_loader = PyPDFLoader(temp.name, extract_images=False)
+        pdf_loader = PyPDFLoader(temp.name, extract_images=True)
         pages = pdf_loader.load()
 
     st.write(f"AI Chatbot for {course_material}")
 
-    # underlying_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     underlying_embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
@@ -75,15 +64,15 @@ course_pdfs = None
 doc_retriever = None
 conversational_chain = None
 
-course = st.sidebar.selectbox("Choose course", (courses))
-docs_path = f"pdfs/{course}"
-course_pdfs = os.listdir(docs_path)
-pdfs = [os.path.join(docs_path, pdf) for pdf in course_pdfs]
+# course = st.sidebar.selectbox("Choose course", (courses))
+# docs_path = f"pdfs/{course}"
+# course_pdfs = os.listdir(docs_path)
+# pdfs = [os.path.join(docs_path, pdf) for pdf in course_pdfs]
 
 course_material = "{Not selected}"
 
 
-@st.cache_resource
+# @st.cache_resource
 def query_response(query, _retriever):
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
     conversational_chain = ConversationalRetrievalChain.from_llm(
@@ -94,66 +83,24 @@ def query_response(query, _retriever):
     return response
 
 
-def get_file():
-    # if course_pdfs:
-    # course_material = st.sidebar.selectbox(
-    #   "Select course pdf", (pdf for pdf in pdfs), key="pdf"
-    # )
-    course_material = st.file_uploader("or Upload your own pdf", type="pdf", key="doc")
-    with NamedTemporaryFile(suffix="pdf") as temp:
-        temp.write(course_material.getvalue())
-
-    st.write(f"AI Chatbot for {course_material}")
-
-    print(course_material.getvalue())
-    return course_material.name
-
-
-# try:
-# if st.sidebar.button('Get available course pdfs'):
-# if course_pdfs:
-#   course_material = st.sidebar.selectbox("Select course pdf", (pdf for pdf in pdfs))
-
-# if course_material:
-# st.write(f"AI Chatbot for **{course}**: {course_material}")
-# st.success("File loading successful, vector db initialized")
-
-# else:
-#   uploaded_file = st.sidebar.file_uploader("or Upload your own pdf", type="pdf")
-#  if uploaded_file is not None:
-#     course_material = uploaded_file
-#    st.write(f"AI Chatbot for **{course}**: {uploaded_file.filename}")
-
-# doc_retriever = get_retriever(course_material)
-
-
-# if st.button("Load pdf"):
-#   with st.spinner("Loading material..."):
-#      # doc_retriever = load_pdf(course_material)
-#     doc_retriever = get_retriever(course_material)
-#
-#       st.success("File loading successful, vector db initialized")
-#      input_text = st.text_input(label="Ask...")
-
-# response = conversational_chain.invoke(input)
-
 if "doc" not in st.session_state:
     st.session_state.doc = ""
-
 
 course_material = st.file_uploader("or Upload your own pdf", type="pdf")
 
 if st.session_state != "":
-    # urls = get_page_urls(base_url)
-    doc_retriever = get_retriever(course_material)
-    st.success("File loading successful, vector db initialize")
+    try:
+        doc_retriever = get_retriever(course_material)
+        st.success("File loading successful, vector db initialize")
+    except:
+        st.error("Upload your file")
 
     # We store the conversation in the session state.
     # This will be use to render the chat conversation.
     # We initialize it with the first message we want to be greeted with.
     if "messages" not in st.session_state:
         st.session_state.messages = [
-            {"role": "assistant", "content": "How may I help you today?"}
+            {"role": "assistant", "content": "Yoo, How far boss?"}
         ]
 
     if "current_response" not in st.session_state:
@@ -165,11 +112,6 @@ if st.session_state != "":
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # We initialize the quantized LLM from a local path.
-    # Currently most parameters are fixed but we can make them
-    # configurable.
-    # llm_chain = create_chain(retriever)
-
     # We take questions/instructions from the chat input to pass to the LLM
     if user_prompt := st.chat_input("Your message here", key="user_input"):
         # Add our input to the session state
@@ -180,8 +122,6 @@ if st.session_state != "":
             st.markdown(user_prompt)
 
         # Pass our input to the llm chain and capture the final responses.
-        # It is worth noting that the Stream Handler is already receiving the
-        # streaming response as the llm is generating. We get our response
         # here once the llm has finished generating the complete response.
         response = query_response(user_prompt, doc_retriever)
         # Add the response to the session state
