@@ -4,6 +4,8 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
 from langchain.vectorstores import DocArrayInMemorySearch
 from langchain_core.prompts import ChatPromptTemplate
+from langchain.docstore.document import Document
+from langchain.memory import ConversationBufferMemory
 from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -12,6 +14,12 @@ from tqdm.auto import tqdm
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
 import streamlit as st
+
+# import asyncio
+import nest_asyncio
+
+nest_asyncio.apply()
+# asyncio.set_event_loop()
 
 load_dotenv()
 
@@ -28,35 +36,39 @@ def initialize_resources():
     llm_gemini = ChatGoogleGenerativeAI(
         model="gemini-1.5-flash-latest", google_api_key=os.getenv("GOOGLE_API_KEY")
     )
-    underlying_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    return llm_gemini, underlying_embeddings
+    return llm_gemini
 
 
-chat_model, embedder = initialize_resources()
-
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=20,
-    length_function=len,
-    is_separator_regex=False,
-    separators="\n",
-)
-
-
-def load_pdf(pdf_file):
+@st.cache_resource
+def get_retriever(pdf_file):
     pdf_loader = PyPDFLoader(pdf_file, extract_images=False)
     pages = pdf_loader.load()
-    documents = text_splitter.split_documents(pages)
 
-    faiss_index_db = DocArrayInMemorySearch.from_documents(documents, embedder)
-    retriever = faiss_index_db.as_retriever()
-    return retriever
+    underlying_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=20,
+        length_function=len,
+        is_separator_regex=False,
+        separators="\n",
+    )
+    documents = text_splitter.split_documents(pages)
+    vectorstore = DocArrayInMemorySearch.from_documents(
+        documents, underlying_embeddings
+    )
+    doc_retiever = vectorstore.as_retriever(
+        search_type="mmr", search_kwargs={"k": 5, "fetch_k": 10}
+    )
+
+    return doc_retiever
+
+
+chat_model = initialize_resources()
 
 
 def query_response(query, retriever):
     prompt = ChatPromptTemplate.from_template(
         """Answer the question based only on the following context:
-    
             {context}
             Question: {question}
         """
@@ -68,7 +80,6 @@ def query_response(query, retriever):
         | chat_model
         | StrOutputParser()
     )
-
     response = chain.invoke(query)
 
     return response
@@ -77,18 +88,13 @@ def query_response(query, retriever):
 # Streamlit UI
 # Course list and pdf retrieval
 
-courses = ["PMB", "PCL", "Kelechi_research"]  # "GSP", "CPM", "PCG",  "PCH", '
+courses = ["PMB", "PCL", "Kelechi_research"]  # "GSP", "CPM", "PCG",  "PCH"
 course_pdfs = None
 
-try:
-    course = st.sidebar.selectbox("Choose course", (courses))
-    docs_path = f"pdfs/{course}"
-    course_pdfs = os.listdir(docs_path)
-    pdfs = [os.path.join(docs_path, pdf) for pdf in course_pdfs]
-
-except Exception as e:
-    st.error("Course materials not found")
-
+course = st.sidebar.selectbox("Choose course", (courses))
+docs_path = f"pdfs/{course}"
+course_pdfs = os.listdir(docs_path)
+pdfs = [os.path.join(docs_path, pdf) for pdf in course_pdfs]
 
 course_material = "{Not selected}"
 
@@ -98,7 +104,6 @@ try:
         course_material = st.sidebar.selectbox(
             "Select course pdf", (pdf for pdf in pdfs)
         )
-
     if course_material:
         st.write(f"AI Chatbot for **{course}**: {course_material}")
         st.success("File loading successful, vector db initialized")
@@ -108,6 +113,8 @@ try:
         if uploaded_file is not None:
             course_material = uploaded_file
             st.write(f"AI Chatbot for **{course}**: {uploaded_file.filename}")
+
+            retriever = get_retriever(course_material)
 
         st.success("File loading successful, vector db initialized")
 
