@@ -32,7 +32,7 @@ def initialize_resources():
 def get_retriever(pdf_file):
     with NamedTemporaryFile(suffix="pdf") as temp:
         temp.write(pdf_file.getvalue())
-        pdf_loader = PyPDFLoader(temp.name, extract_images=False)
+        pdf_loader = PyPDFLoader(temp.name, extract_images=True)
         pages = pdf_loader.load()
 
     # st.write(f"AI Chatbot for {course_material}")
