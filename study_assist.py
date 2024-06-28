@@ -78,7 +78,7 @@ def query_response(query, _retriever):
     conversational_chain = ConversationalRetrievalChain.from_llm(
         llm=chat_model, retriever=_retriever, memory=memory, verbose=False
     )
-    response = conversational_chain.invoke(query)
+    response = conversational_chain.run(query)
 
     return response
 
