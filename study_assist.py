@@ -32,10 +32,10 @@ def initialize_resources():
 def get_retriever(pdf_file):
     with NamedTemporaryFile(suffix="pdf") as temp:
         temp.write(pdf_file.getvalue())
-        pdf_loader = PyPDFLoader(temp.name, extract_images=True)
+        pdf_loader = PyPDFLoader(temp.name, extract_images=False)
         pages = pdf_loader.load()
 
-    st.write(f"AI Chatbot for {course_material}")
+    # st.write(f"AI Chatbot for {course_material}")
 
     underlying_embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     text_splitter = RecursiveCharacterTextSplitter(
@@ -90,10 +90,11 @@ course_material = st.file_uploader("or Upload your own pdf", type="pdf")
 
 if st.session_state != "":
     try:
-        doc_retriever = get_retriever(course_material)
+        with st.spinner("loading document.."):
+            doc_retriever = get_retriever(course_material)
         st.success("File loading successful, vector db initialize")
-    except:
-        st.error("Upload your file")
+    except Exception as e:
+        st.error(e)
 
     # We store the conversation in the session state.
     # This will be use to render the chat conversation.
@@ -113,7 +114,7 @@ if st.session_state != "":
             st.markdown(message["content"])
 
     # We take questions/instructions from the chat input to pass to the LLM
-    if user_prompt := st.chat_input("Your message here", key="user_input"):
+    if user_prompt := st.chat_input("Ask...", key="user_input"):
         # Add our input to the session state
         st.session_state.messages.append({"role": "user", "content": user_prompt})
 
