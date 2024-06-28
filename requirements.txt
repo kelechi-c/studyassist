@@ -9,3 +9,4 @@ pypdf
 langchain_text_splitters
 nest_asyncio
 rapidocr-onnxruntime
+python-dotenv
